@@ -67,6 +67,27 @@ def setup_wandb(train_config, fsdp_config, **kwargs):
     run.config.update(fsdp_config, allow_val_change=True)
     return run
 
+def setup_tensorboard(train_config, fsdp_config, **kwargs):
+    try:
+        import tensorboard
+    except ImportError:
+        raise ImportError(
+            "You are trying to use tensorboard which is not currently installed. "
+            "Please install it using: pip install tensorboard"
+        )
+    from llama_recipes.configs import tensorboard_config as CONFIG
+    from torch.utils.tensorboard import SummaryWriter
+    import os
+    import datetime
+    tb_config = CONFIG()
+
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    training_log_directory = os.path.join(train_config.tensorboard_log_directory, current_time, "train")
+    test_log_directory = os.path.join(train_config.tensorboard_log_directory, current_time, "test")
+    tb_config.train_summary_writer = SummaryWriter(training_log_directory)
+    tb_config.test_summary_writer = SummaryWriter(test_log_directory)
+    return tb_config
+
 
 def main(**kwargs):
     # Update the configuration for the training and sharding process
@@ -94,10 +115,15 @@ def main(**kwargs):
         setup_environ_flags(rank)
 
     wandb_run = None
+    tensorboard_logging = None
 
     if train_config.use_wandb:
         if not train_config.enable_fsdp or rank==0:
             wandb_run = setup_wandb(train_config, fsdp_config, **kwargs)    
+
+    if train_config.use_tensorboard:
+        if not train_config.enable_fsdp or rank==0:
+            tensorboard_logging = setup_tensorboard(train_config, fsdp_config, **kwargs)
 
     # Load the pre-trained model and setup its configuration
     use_cache = False if train_config.enable_fsdp else None
@@ -278,6 +304,7 @@ def main(**kwargs):
         local_rank if train_config.enable_fsdp else None,
         rank if train_config.enable_fsdp else None,
         wandb_run,
+        tensorboard_logging,
     )
     if not train_config.enable_fsdp or rank==0:
         [print(f'Key: {k}, Value: {v}') for k, v in results.items()]

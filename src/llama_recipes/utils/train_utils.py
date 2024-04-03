@@ -33,7 +33,7 @@ def set_tokenizer_params(tokenizer: LlamaTokenizer):
 def byte2mb(x):
     return int(x / 2**20)
 
-def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps, train_config, fsdp_config=None, local_rank=None, rank=None, wandb_run=None):
+def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps, train_config, fsdp_config=None, local_rank=None, rank=None, wandb_run=None, tensorboard_logging=None):
     """
     Trains the model on the given dataloader
 
@@ -140,6 +140,19 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                             'train/step': epoch * len(train_dataloader) + step,
                             'train/loss': loss.detach().float(),
                         })
+
+                if tensorboard_logging:
+                    if not train_config.enable_fsdp or rank==0:
+                        iteration = epoch * len(train_dataloader) + step
+                        tensorboard_logging.train_summary_writer.add_scalar('train/step_loss', train_step_loss, iteration)
+                        tensorboard_logging.train_summary_writer.add_scalar('train/loss', train_loss, iteration)
+                        tensorboard_logging.train_summary_writer.add_scalar('train/perplexity', train_step_perplexity, iteration)
+
+                        tensorboard_logging.train_summary_writer.add_scalar('val/step_loss', val_step_loss, iteration)
+                        tensorboard_logging.train_summary_writer.add_scalar('val/loss', val_loss, iteration)
+                        tensorboard_logging.train_summary_writer.add_scalar('val/perplexity', val_step_perplexity, iteration)
+
+
 
                 pbar.set_description(f"Training Epoch: {epoch+1}/{train_config.num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float()})")
 
